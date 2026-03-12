@@ -158,26 +158,36 @@ def create_invoice_pdf(data):
 # --- STREAMLIT APP ---
 st.set_page_config(page_title="Invoice Generator", page_icon="📄")
 
-# REVERTED CSS FOR SPACING
+# CUSTOM CSS FOR PERFECT CENTERING
 st.markdown("""
     <style>
+    /* Force alignment for the title and image containers */
+    .stTitle {
+        text-align: center !important;
+        width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
+        padding-top: 40px !important;
+        padding-bottom: 20px !important;
+    }
     .logo-container {
-        padding-top: 60px; /* Reverted spacing */
+        padding-top: 60px;
         display: flex;
         justify-content: center;
         align-items: center;
         width: 100%;
-    }
-    .stTitle {
-        text-align: center;
-        width: 100%;
-        font-weight: 300 !important;
-        letter-spacing: -1px;
-        padding-top: 40px !important; /* Reverted spacing */
-        padding-bottom: 20px !important;
+        margin-left: auto;
+        margin-right: auto;
     }
     .stFileUploader {
+        display: flex !important;
+        justify-content: center !important;
         padding-top: 20px;
+    }
+    /* Ensure the internal header of the uploader is centered */
+    section[data-testid="stFileUploader"] {
+        width: 100%;
+        text-align: center;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -188,8 +198,8 @@ if os.path.exists(WEB_LOGO):
     st.image(WEB_LOGO, width=400)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Title immediately below logo
-st.title("Invoice Generator", anchor=False)
+# Title immediately below logo with explicit centering
+st.markdown("<h1 style='text-align: center; font-weight: 300; letter-spacing: -1px;'>Invoice Generator</h1>", unsafe_allow_html=True)
 
 if 'uploader_key' not in st.session_state:
     st.session_state.uploader_key = 0
