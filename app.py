@@ -17,7 +17,7 @@ TAB_ICON = "VP Warehouse Icon TP.png" # Your new icon file
 # --- STREAMLIT UI CONFIGURATION ---
 # This updates the Chrome tab text and the icon
 st.set_page_config(
-    page_title="VP Invoice Generator", 
+    page_title="VP Invoice Maker", 
     page_icon=TAB_ICON if os.path.exists(TAB_ICON) else "📄"
 )
 
