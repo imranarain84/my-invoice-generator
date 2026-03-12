@@ -8,11 +8,20 @@ import os
 # --- YOUR BUSINESS DETAILS ---
 MY_COMPANY_NAME = "Vertical Passage LTD"
 MY_COMPANY_ADDRESS = "Unit 2 More Plus Central Park\nHudson Ave, Severn Beach\nBRISTOL, BS35 4EL"
-# Company ID removed from global variables to ensure it isn't called
 
 # Logo Filenames
 WEB_LOGO = "VP Logo Horizontal Transparent White Lettering.png"
 PDF_LOGO = "logo.png"
+TAB_ICON = "VP Warehouse Icon TP.png" # Your new icon file
+
+# --- STREAMLIT UI CONFIGURATION ---
+# This updates the Chrome tab text and the icon
+st.set_page_config(
+    page_title="VP Invoice Generator", 
+    page_icon=TAB_ICON if os.path.exists(TAB_ICON) else "📄"
+)
+
+# ... [Rest of your extraction and PDF functions remain exactly the same] ...
 
 def extract_backmarket_data(uploaded_file):
     items = []
@@ -24,7 +33,6 @@ def extract_backmarket_data(uploaded_file):
         width = page.width
         height = page.height
         
-        # 1. CROP THE PAGE TO EXTRACT ADDRESSES WITHOUT DUPLICATION
         # Crop Left Half for Shipping (x0, y0, x1, y1)
         left_half = page.within_bbox((0, 0, width/2, height))
         shipping_text = left_half.extract_text()
@@ -33,7 +41,7 @@ def extract_backmarket_data(uploaded_file):
         right_half = page.within_bbox((width/2, 0, width, height))
         billing_text = right_half.extract_text()
         
-        # 2. Extract specifically from these cropped regions
+        # Extract specifically from these cropped regions
         ship_match = re.search(r"Shipping address\s*\n(.*?)(?=\nBilling address|\nDelivery slip|Total price|$)", shipping_text, re.DOTALL)
         shipping_addr = ship_match.group(1).strip() if ship_match else "Address Not Found"
         
@@ -98,7 +106,6 @@ def create_invoice_pdf(data):
     pdf.set_font("Arial", 'B', 11)
     pdf.cell(0, 6, MY_COMPANY_NAME, ln=True)
     pdf.set_font("Arial", size=9)
-    # UPDATED: Only displaying the address, ID line removed
     pdf.multi_cell(0, 4.5, MY_COMPANY_ADDRESS)
     
     pdf.ln(6) 
@@ -175,12 +182,12 @@ def create_invoice_pdf(data):
     pdf.cell(0, 5, "VAT inclusive at import. No additional tax charged to customer.", ln=True, align='C')
     return pdf.output(dest='S').encode('latin-1')
 
-# --- STREAMLIT UI ---
-st.set_page_config(page_title="Invoice Generator", page_icon="📄")
+# --- MAIN APP LAYOUT ---
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     if os.path.exists(WEB_LOGO):
         st.image(WEB_LOGO, use_container_width=True)
+
 st.markdown("<h1 style='text-align: center;'>Invoice Generator</h1>", unsafe_allow_html=True)
 
 if 'uploader_key' not in st.session_state:
