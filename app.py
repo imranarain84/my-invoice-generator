@@ -158,23 +158,23 @@ def create_invoice_pdf(data):
 # --- STREAMLIT APP ---
 st.set_page_config(page_title="Invoice Generator", page_icon="📄")
 
-# CUSTOM CSS FOR ALIGNMENT
+# REVERTED CSS FOR SPACING
 st.markdown("""
     <style>
+    .logo-container {
+        padding-top: 60px; /* Reverted spacing */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+    }
     .stTitle {
         text-align: center;
         width: 100%;
         font-weight: 300 !important;
         letter-spacing: -1px;
-        padding-top: 20px !important;
+        padding-top: 40px !important; /* Reverted spacing */
         padding-bottom: 20px !important;
-    }
-    .logo-container {
-        padding-top: 60px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        width: 100%;
     }
     .stFileUploader {
         padding-top: 20px;
@@ -185,10 +185,10 @@ st.markdown("""
 # Centered Logo
 if os.path.exists(WEB_LOGO):
     st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-    st.image(WEB_LOGO, width=400) # Fixed width for better centering control
+    st.image(WEB_LOGO, width=400)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Simple Centered Title (Anchor set to False to remove link icon)
+# Title immediately below logo
 st.title("Invoice Generator", anchor=False)
 
 if 'uploader_key' not in st.session_state:
