@@ -22,37 +22,36 @@ def extract_backmarket_data(uploaded_file):
     with pdfplumber.open(uploaded_file) as pdf:
         page = pdf.pages[0]
         full_text = page.extract_text()
-        lines = full_text.split('\n')
+        
+        # New approach: Clean extraction of individual address blocks
+        # 1. Shipping Address Logic
+        ship_match = re.search(r"Shipping address\s*\n(.*?)(?=\nBilling address)", full_text, re.DOTALL)
+        if ship_match:
+            # Remove duplicated words within the same line if they appear
+            raw_ship = ship_match.group(1).strip().split('\n')
+            shipping_addr = "\n".join([line.split(' ')[0] if len(line.split(' ')) > 1 and line.split(' ')[0] == line.split(' ')[1] else line for line in raw_ship])
+        
+        # 2. Billing Address Logic
+        bill_match = re.search(r"Billing address\s*\n(.*?)(?=\nDelivery slip|Total price|$)", full_text, re.DOTALL)
+        if bill_match:
+            raw_bill = bill_match.group(1).strip().split('\n')
+            billing_addr = "\n".join([line.split(' ')[0] if len(line.split(' ')) > 1 and line.split(' ')[0] == line.split(' ')[1] else line for line in raw_bill])
+
         tables = page.extract_tables()
     
-    # 1. Metadata Extraction
+    # Metadata Extraction
     order_no = re.search(r"Order no\. (\d+)", full_text)
     order_val = order_no.group(1) if order_no else "N/A"
     order_date = re.search(r"Date of order: ([\d/]+)", full_text)
     order_date_val = order_date.group(1) if order_date else "10/03/26"
     
-    # 2. Name Extraction
+    # Name Extraction
     name_match = re.search(r"Hi\s+([A-Za-z]+),", full_text)
     first_name = name_match.group(1).strip() if name_match else "Customer"
     full_name_match = re.search(r"Customer:\s*(.*)", full_text)
     full_name = full_name_match.group(1).strip() if full_name_match else f"{first_name}"
     
-    # 3. DIRECT ADDRESS EXTRACTION (By Line Headers)
-    try:
-        # Find index of the headers
-        ship_idx = next(i for i, line in enumerate(lines) if "Shipping address" in line)
-        bill_idx = next(i for i, line in enumerate(lines) if "Billing address" in line)
-        
-        # Shipping is between "Shipping address" and "Billing address"
-        shipping_addr = "\n".join(lines[ship_idx+1 : bill_idx]).strip()
-        # Billing is the 4 lines after "Billing address"
-        billing_addr = "\n".join(lines[bill_idx+1 : bill_idx+5]).strip()
-    except:
-        # Fallback if line indexing fails
-        shipping_addr = "Address extraction error.\nPlease check delivery slip format."
-        billing_addr = shipping_addr
-
-    # 4. Table Extraction
+    # Table Extraction
     carrier = "Standard"
     ship_cost = "£0.00"
     grand_total = "£0.00"
@@ -68,7 +67,6 @@ def extract_backmarket_data(uploaded_file):
                 })
                 if row[5]: carrier = str(row[5]).strip()
                 if row[6]: ship_cost = str(row[6]).strip()
-
             if "TOTAL" in str(row).upper():
                 grand_total = str(row[-1]).replace(',', '.')
 
@@ -79,8 +77,8 @@ def extract_backmarket_data(uploaded_file):
         'ship_cost': ship_cost,
         'first_name': first_name,
         'full_name': full_name,
-        'shipping_block': shipping_addr,
-        'billing_block': billing_addr,
+        'shipping_block': shipping_addr if shipping_addr else "Address Not Found",
+        'billing_block': billing_addr if billing_addr else "Address Not Found",
         'items': items,
         'total': grand_total
     }
@@ -102,8 +100,6 @@ def create_invoice_pdf(data):
     pdf.multi_cell(0, 4.5, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
     
     pdf.ln(6) 
-    
-    # MATCHING HEADERS TO DELIVERY SLIP
     pdf.set_font("Arial", 'B', 9)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(95, 5, "SHIPPING ADDRESS", 0, 0)
@@ -117,8 +113,6 @@ def create_invoice_pdf(data):
     pdf.multi_cell(90, 5, data['billing_block'])
     
     pdf.ln(6) 
-
-    # INFO BAR
     pdf.set_fill_color(245, 245, 245)
     pdf.set_font("Arial", 'B', 9)
     pdf.cell(63, 10, f"  Invoice: {data['order_no']}", 0, 0, 'L', True)
@@ -126,7 +120,7 @@ def create_invoice_pdf(data):
     pdf.cell(63, 10, f"Shipping Method: {data['carrier']}  ", 0, 1, 'R', True)
     pdf.ln(4)
     
-    # ITEM TABLE
+    # Item Table Header
     w_desc, w_sku, w_qty, w_total = 95, 40, 20, 35
     pdf.set_fill_color(40, 40, 40)
     pdf.set_text_color(255, 255, 255)
@@ -138,7 +132,6 @@ def create_invoice_pdf(data):
     
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", size=9)
-    
     for item in data['items']:
         lines = pdf.multi_cell(w_desc, 5, item['desc'], split_only=True)
         row_h = max(12, len(lines) * 6)
@@ -156,12 +149,11 @@ def create_invoice_pdf(data):
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(w_desc + w_sku + w_qty, 8, "Shipping Cost: ", 0, 0, 'R')
     pdf.cell(w_total, 8, data['ship_cost'], 1, 1, 'C')
-    
     pdf.set_font("Arial", 'B', 11)
     pdf.cell(w_desc + w_sku + w_qty, 10, "TOTAL: ", 0, 0, 'R')
     pdf.cell(w_total, 10, data['total'], 1, 1, 'C')
     
-    # CUSTOMER MESSAGE
+    # Message Area
     pdf.ln(6)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 6, f"Hi {data['first_name']},", ln=True, align='C')
@@ -177,16 +169,14 @@ def create_invoice_pdf(data):
     pdf.cell(0, 5, "Enjoy your new case,", ln=True, align='C')
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 5, "Vertical Passage", ln=True, align='C')
-    
     pdf.set_y(-12) 
     pdf.set_font("Arial", 'I', 8)
     pdf.set_text_color(150, 150, 150)
     pdf.cell(0, 5, "VAT inclusive at import. No additional tax charged to customer.", ln=True, align='C')
     return pdf.output(dest='S').encode('latin-1')
 
-# --- STREAMLIT APP ---
+# --- STREAMLIT UI ---
 st.set_page_config(page_title="Invoice Generator", page_icon="📄")
-
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     if os.path.exists(WEB_LOGO):
@@ -204,7 +194,6 @@ if f:
         st.success(f"Order {data['order_no']} loaded.")
         pdf_out = create_invoice_pdf(data)
         download_filename = f"{data['full_name']}_{data['order_no']}.pdf"
-        
         col_dl, col_rs = st.columns([3, 1])
         with col_dl:
             st.download_button("Download Invoice", pdf_out, download_filename, use_container_width=True)
@@ -212,6 +201,5 @@ if f:
             if st.button("Reset", use_container_width=True):
                 st.session_state.uploader_key += 1
                 st.rerun()
-                
     except Exception as e:
-        st.error(f"Error processing PDF. Please check the file format.")
+        st.error(f"Error processing document. Error: {e}")
