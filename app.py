@@ -8,7 +8,7 @@ import os
 # --- YOUR BUSINESS DETAILS ---
 MY_COMPANY_NAME = "Vertical Passage LTD"
 MY_COMPANY_ADDRESS = "Unit 2 More Plus Central Park\nHudson Ave, Severn Beach\nBRISTOL, BS35 4EL"
-MY_COMPANY_ID = "Company ID: 12345678"
+# Company ID removed from global variables to ensure it isn't called
 
 # Logo Filenames
 WEB_LOGO = "VP Logo Horizontal Transparent White Lettering.png"
@@ -21,37 +21,38 @@ def extract_backmarket_data(uploaded_file):
     
     with pdfplumber.open(uploaded_file) as pdf:
         page = pdf.pages[0]
-        full_text = page.extract_text()
+        width = page.width
+        height = page.height
         
-        # New approach: Clean extraction of individual address blocks
-        # 1. Shipping Address Logic
-        ship_match = re.search(r"Shipping address\s*\n(.*?)(?=\nBilling address)", full_text, re.DOTALL)
-        if ship_match:
-            # Remove duplicated words within the same line if they appear
-            raw_ship = ship_match.group(1).strip().split('\n')
-            shipping_addr = "\n".join([line.split(' ')[0] if len(line.split(' ')) > 1 and line.split(' ')[0] == line.split(' ')[1] else line for line in raw_ship])
+        # 1. CROP THE PAGE TO EXTRACT ADDRESSES WITHOUT DUPLICATION
+        # Crop Left Half for Shipping (x0, y0, x1, y1)
+        left_half = page.within_bbox((0, 0, width/2, height))
+        shipping_text = left_half.extract_text()
         
-        # 2. Billing Address Logic
-        bill_match = re.search(r"Billing address\s*\n(.*?)(?=\nDelivery slip|Total price|$)", full_text, re.DOTALL)
-        if bill_match:
-            raw_bill = bill_match.group(1).strip().split('\n')
-            billing_addr = "\n".join([line.split(' ')[0] if len(line.split(' ')) > 1 and line.split(' ')[0] == line.split(' ')[1] else line for line in raw_bill])
+        # Crop Right Half for Billing
+        right_half = page.within_bbox((width/2, 0, width, height))
+        billing_text = right_half.extract_text()
+        
+        # 2. Extract specifically from these cropped regions
+        ship_match = re.search(r"Shipping address\s*\n(.*?)(?=\nBilling address|\nDelivery slip|Total price|$)", shipping_text, re.DOTALL)
+        shipping_addr = ship_match.group(1).strip() if ship_match else "Address Not Found"
+        
+        bill_match = re.search(r"Billing address\s*\n(.*?)(?=\nDelivery slip|Total price|$)", billing_text, re.DOTALL)
+        billing_addr = bill_match.group(1).strip() if bill_match else "Address Not Found"
 
+        full_text = page.extract_text()
         tables = page.extract_tables()
     
-    # Metadata Extraction
     order_no = re.search(r"Order no\. (\d+)", full_text)
     order_val = order_no.group(1) if order_no else "N/A"
     order_date = re.search(r"Date of order: ([\d/]+)", full_text)
     order_date_val = order_date.group(1) if order_date else "10/03/26"
     
-    # Name Extraction
     name_match = re.search(r"Hi\s+([A-Za-z]+),", full_text)
     first_name = name_match.group(1).strip() if name_match else "Customer"
     full_name_match = re.search(r"Customer:\s*(.*)", full_text)
     full_name = full_name_match.group(1).strip() if full_name_match else f"{first_name}"
     
-    # Table Extraction
     carrier = "Standard"
     ship_cost = "£0.00"
     grand_total = "£0.00"
@@ -77,8 +78,8 @@ def extract_backmarket_data(uploaded_file):
         'ship_cost': ship_cost,
         'first_name': first_name,
         'full_name': full_name,
-        'shipping_block': shipping_addr if shipping_addr else "Address Not Found",
-        'billing_block': billing_addr if billing_addr else "Address Not Found",
+        'shipping_block': shipping_addr,
+        'billing_block': billing_addr,
         'items': items,
         'total': grand_total
     }
@@ -97,7 +98,8 @@ def create_invoice_pdf(data):
     pdf.set_font("Arial", 'B', 11)
     pdf.cell(0, 6, MY_COMPANY_NAME, ln=True)
     pdf.set_font("Arial", size=9)
-    pdf.multi_cell(0, 4.5, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
+    # UPDATED: Only displaying the address, ID line removed
+    pdf.multi_cell(0, 4.5, MY_COMPANY_ADDRESS)
     
     pdf.ln(6) 
     pdf.set_font("Arial", 'B', 9)
@@ -120,7 +122,6 @@ def create_invoice_pdf(data):
     pdf.cell(63, 10, f"Shipping Method: {data['carrier']}  ", 0, 1, 'R', True)
     pdf.ln(4)
     
-    # Item Table Header
     w_desc, w_sku, w_qty, w_total = 95, 40, 20, 35
     pdf.set_fill_color(40, 40, 40)
     pdf.set_text_color(255, 255, 255)
@@ -153,7 +154,6 @@ def create_invoice_pdf(data):
     pdf.cell(w_desc + w_sku + w_qty, 10, "TOTAL: ", 0, 0, 'R')
     pdf.cell(w_total, 10, data['total'], 1, 1, 'C')
     
-    # Message Area
     pdf.ln(6)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 6, f"Hi {data['first_name']},", ln=True, align='C')
@@ -202,4 +202,4 @@ if f:
                 st.session_state.uploader_key += 1
                 st.rerun()
     except Exception as e:
-        st.error(f"Error processing document. Error: {e}")
+        st.error(f"Error processing document.")
