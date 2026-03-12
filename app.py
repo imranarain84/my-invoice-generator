@@ -20,22 +20,32 @@ def extract_backmarket_data(uploaded_file):
         full_text = "\n".join([page.extract_text() for page in pdf.pages])
         tables = pdf.pages[0].extract_tables()
     
+    # 1. Metadata Extraction
     order_no = re.search(r"Order no\. (\d+)", full_text)
     order_val = order_no.group(1) if order_no else "N/A"
     order_date = re.search(r"Date of order: ([\d/]+)", full_text)
     order_date_val = order_date.group(1) if order_date else "10/03/26"
     
+    # 2. Shipping Extraction
     carrier_match = re.search(r"Shipping method:\s*(.*)", full_text)
     carrier = carrier_match.group(1).strip() if carrier_match else "Standard"
     ship_cost_match = re.search(r"Shipping costs\s*(£[\d\.]+)", full_text)
     ship_cost = ship_cost_match.group(1) if ship_cost_match else "£0.00"
 
+    # 3. Name Extraction for Filename (from Billed To / Greeting)
+    # Extracts first name for the message and full name for the file
     name_match = re.search(r"Hi\s+([A-Za-z]+),", full_text)
     first_name = name_match.group(1).strip() if name_match else "Lindsay"
     
+    # Extraction for Last Name (often the line after Company Capital PCC)
+    full_name_match = re.search(r"Company Capital PCC\n([A-Za-z]+\s+[A-Za-z]+)", full_text)
+    full_name = full_name_match.group(1).strip() if full_name_match else f"{first_name} Argent"
+    
+    # 4. Address Extraction
     addr_match = re.search(r"(Company Capital PCC.*?)(?=\nBilling address|\nDelivery slip)", full_text, re.DOTALL)
     address_block = addr_match.group(1).strip() if addr_match else "Company Capital PCC\nLindsay Argent\nSolar House\n915 High Road\nN12 8QJ London GB"
 
+    # 5. Table Extraction
     grand_total = "£0.00"
     if tables:
         for row in tables[0]:
@@ -55,15 +65,15 @@ def extract_backmarket_data(uploaded_file):
         'carrier': carrier,
         'ship_cost': ship_cost,
         'first_name': first_name,
+        'full_name': full_name,
         'address_block': address_block,
         'items': items,
         'total': grand_total
     }
 
 def create_invoice_pdf(data):
-    pdf = FPDF()
-    # Margin set to 15 to give maximum room on one page
-    pdf.set_auto_page_break(auto=True, margin=15) 
+    pdf = FPDF(unit='mm', format='A4')
+    pdf.set_auto_page_break(auto=False) 
     pdf.add_page()
     
     if os.path.exists(PDF_LOGO):
@@ -77,7 +87,7 @@ def create_invoice_pdf(data):
     pdf.set_font("Arial", size=9)
     pdf.multi_cell(0, 4.5, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
     
-    pdf.ln(8) # Tighter vertical spacing
+    pdf.ln(6) 
     
     pdf.set_font("Arial", 'B', 9)
     pdf.set_text_color(100, 100, 100)
@@ -135,34 +145,33 @@ def create_invoice_pdf(data):
     pdf.cell(w_desc + w_sku + w_qty, 10, "TOTAL: ", 0, 0, 'R')
     pdf.cell(w_total, 10, data['total'], 1, 1, 'C')
     
-    # Message Block - Stripping trailing whitespace to prevent Page 2 jumps
     pdf.ln(6)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 6, f"Hi {data['first_name']},", ln=True, align='C')
     
     pdf.set_font("Arial", '', 10)
     pdf.ln(2)
-    msg = f"We hope you enjoy your order #{data['order_no']} from Vertical Passage LTD.\nLooks like your phone just found its new favorite case.".strip()
-    pdf.multi_cell(0, 5, msg, align='C')
+    msg1 = f"We hope you enjoy your order #{data['order_no']} from Vertical Passage LTD.".strip()
+    msg2 = "Looks like your phone just found its new favorite case.".strip()
+    pdf.multi_cell(0, 5, msg1 + "\n" + msg2, align='C')
     
     pdf.ln(3)
     help_msg = 'Need help? Just log in to your Back Market account, go to Orders, and click "Get Help."'.strip()
     pdf.multi_cell(0, 5, help_msg, align='C')
     
-    pdf.ln(6)
+    pdf.ln(5)
     pdf.cell(0, 5, "Enjoy your new case,", ln=True, align='C')
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 5, "Vertical Passage", ln=True, align='C')
 
-    # Force Footer to absolute bottom of the current page
-    pdf.set_y(-16) 
+    pdf.set_y(-12) 
     pdf.set_font("Arial", 'I', 8)
     pdf.set_text_color(150, 150, 150)
     pdf.cell(0, 5, "VAT inclusive at import. No additional tax charged to customer.", ln=True, align='C')
     
     return pdf.output(dest='S').encode('latin-1')
 
-# --- APP ---
+# --- STREAMLIT APP ---
 st.set_page_config(page_title="Invoice Generator", page_icon="📄")
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
@@ -170,9 +179,27 @@ with col2:
         st.image(WEB_LOGO, use_container_width=True)
 st.markdown("<h1 style='text-align: center;'>Invoice Generator</h1>", unsafe_allow_html=True)
 
-f = st.file_uploader("Upload Back Market Delivery Slip", type="pdf")
+if 'uploader_key' not in st.session_state:
+    st.session_state.uploader_key = 0
+
+f = st.file_uploader("Upload Back Market Delivery Slip", type="pdf", key=f"uploader_{st.session_state.uploader_key}")
+
 if f:
-    data = extract_backmarket_data(f)
-    st.success(f"Order {data['order_no']} loaded.")
-    pdf_out = create_invoice_pdf(data)
-    st.download_button("Download Invoice", pdf_out, f"Invoice_{data['order_no']}.pdf", use_container_width=True)
+    try:
+        data = extract_backmarket_data(f)
+        st.success(f"Order {data['order_no']} loaded.")
+        pdf_out = create_invoice_pdf(data)
+        
+        # New Filename logic: First Last_OrderNumber.pdf
+        download_filename = f"{data['full_name']}_{data['order_no']}.pdf"
+        
+        col_dl, col_rs = st.columns([3, 1])
+        with col_dl:
+            st.download_button("Download Invoice", pdf_out, download_filename, use_container_width=True)
+        with col_rs:
+            if st.button("Reset", use_container_width=True):
+                st.session_state.uploader_key += 1
+                st.rerun()
+                
+    except Exception as e:
+        st.error(f"Error: {e}")
