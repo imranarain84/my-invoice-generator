@@ -16,9 +16,14 @@ PDF_LOGO = "logo.png"
 
 def extract_backmarket_data(uploaded_file):
     items = []
+    shipping_addr = ""
+    billing_addr = ""
+    
     with pdfplumber.open(uploaded_file) as pdf:
-        full_text = "\n".join([page.extract_text() for page in pdf.pages])
-        tables = pdf.pages[0].extract_tables()
+        page = pdf.pages[0]
+        full_text = page.extract_text()
+        lines = full_text.split('\n')
+        tables = page.extract_tables()
     
     # 1. Metadata Extraction
     order_no = re.search(r"Order no\. (\d+)", full_text)
@@ -29,14 +34,23 @@ def extract_backmarket_data(uploaded_file):
     # 2. Name Extraction
     name_match = re.search(r"Hi\s+([A-Za-z]+),", full_text)
     first_name = name_match.group(1).strip() if name_match else "Customer"
-    
     full_name_match = re.search(r"Customer:\s*(.*)", full_text)
     full_name = full_name_match.group(1).strip() if full_name_match else f"{first_name}"
     
-    # 3. UNIVERSAL ADDRESS EXTRACTION
-    # Captures everything between 'Shipping address' and 'Billing address'
-    addr_search = re.search(r"Shipping address\s*\n(.*?)(?=\nBilling address|\nDelivery slip|$)", full_text, re.DOTALL)
-    address_block = addr_search.group(1).strip() if addr_search else "Address Not Detected"
+    # 3. DIRECT ADDRESS EXTRACTION (By Line Headers)
+    try:
+        # Find index of the headers
+        ship_idx = next(i for i, line in enumerate(lines) if "Shipping address" in line)
+        bill_idx = next(i for i, line in enumerate(lines) if "Billing address" in line)
+        
+        # Shipping is between "Shipping address" and "Billing address"
+        shipping_addr = "\n".join(lines[ship_idx+1 : bill_idx]).strip()
+        # Billing is the 4 lines after "Billing address"
+        billing_addr = "\n".join(lines[bill_idx+1 : bill_idx+5]).strip()
+    except:
+        # Fallback if line indexing fails
+        shipping_addr = "Address extraction error.\nPlease check delivery slip format."
+        billing_addr = shipping_addr
 
     # 4. Table Extraction
     carrier = "Standard"
@@ -45,7 +59,6 @@ def extract_backmarket_data(uploaded_file):
 
     if tables:
         for row in tables[0]:
-            # Detect item rows: Line no must be a number
             if len(row) > 7 and row[0] and row[0].isdigit():
                 items.append({
                     'desc': row[1].replace('\n', ' ').strip(),
@@ -53,9 +66,7 @@ def extract_backmarket_data(uploaded_file):
                     'sku': str(row[3]),
                     'total': str(row[7]).replace(',', '.')
                 })
-                # Capture Carrier from the 6th column (index 5)
                 if row[5]: carrier = str(row[5]).strip()
-                # Capture Shipping Cost from the 7th column (index 6)
                 if row[6]: ship_cost = str(row[6]).strip()
 
             if "TOTAL" in str(row).upper():
@@ -68,7 +79,8 @@ def extract_backmarket_data(uploaded_file):
         'ship_cost': ship_cost,
         'first_name': first_name,
         'full_name': full_name,
-        'address_block': address_block,
+        'shipping_block': shipping_addr,
+        'billing_block': billing_addr,
         'items': items,
         'total': grand_total
     }
@@ -90,21 +102,23 @@ def create_invoice_pdf(data):
     pdf.multi_cell(0, 4.5, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
     
     pdf.ln(6) 
+    
+    # MATCHING HEADERS TO DELIVERY SLIP
     pdf.set_font("Arial", 'B', 9)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(95, 5, "BILLED TO", 0, 0)
-    pdf.cell(95, 5, "DELIVERED TO", 0, 1)
+    pdf.cell(95, 5, "SHIPPING ADDRESS", 0, 0)
+    pdf.cell(95, 5, "BILLING ADDRESS", 0, 1)
     
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", size=10)
     y_start = pdf.get_y()
-    pdf.multi_cell(90, 5, data['address_block'])
+    pdf.multi_cell(90, 5, data['shipping_block'])
     pdf.set_xy(105, y_start)
-    pdf.multi_cell(90, 5, data['address_block'])
+    pdf.multi_cell(90, 5, data['billing_block'])
     
     pdf.ln(6) 
 
-    # EVENLY SPACED INFO BAR
+    # INFO BAR
     pdf.set_fill_color(245, 245, 245)
     pdf.set_font("Arial", 'B', 9)
     pdf.cell(63, 10, f"  Invoice: {data['order_no']}", 0, 0, 'L', True)
@@ -112,6 +126,7 @@ def create_invoice_pdf(data):
     pdf.cell(63, 10, f"Shipping Method: {data['carrier']}  ", 0, 1, 'R', True)
     pdf.ln(4)
     
+    # ITEM TABLE
     w_desc, w_sku, w_qty, w_total = 95, 40, 20, 35
     pdf.set_fill_color(40, 40, 40)
     pdf.set_text_color(255, 255, 255)
@@ -146,6 +161,7 @@ def create_invoice_pdf(data):
     pdf.cell(w_desc + w_sku + w_qty, 10, "TOTAL: ", 0, 0, 'R')
     pdf.cell(w_total, 10, data['total'], 1, 1, 'C')
     
+    # CUSTOMER MESSAGE
     pdf.ln(6)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 6, f"Hi {data['first_name']},", ln=True, align='C')
@@ -161,6 +177,7 @@ def create_invoice_pdf(data):
     pdf.cell(0, 5, "Enjoy your new case,", ln=True, align='C')
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 5, "Vertical Passage", ln=True, align='C')
+    
     pdf.set_y(-12) 
     pdf.set_font("Arial", 'I', 8)
     pdf.set_text_color(150, 150, 150)
@@ -170,12 +187,10 @@ def create_invoice_pdf(data):
 # --- STREAMLIT APP ---
 st.set_page_config(page_title="Invoice Generator", page_icon="📄")
 
-# App Header Centering
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     if os.path.exists(WEB_LOGO):
         st.image(WEB_LOGO, use_container_width=True)
-
 st.markdown("<h1 style='text-align: center;'>Invoice Generator</h1>", unsafe_allow_html=True)
 
 if 'uploader_key' not in st.session_state:
@@ -199,4 +214,4 @@ if f:
                 st.rerun()
                 
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error processing PDF. Please check the file format.")
