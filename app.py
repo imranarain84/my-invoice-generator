@@ -10,21 +10,25 @@ MY_COMPANY_NAME = "Vertical Passage LTD"
 MY_COMPANY_ADDRESS = "Unit 2 More Plus Central Park\nHudson Ave, Severn Beach\nBRISTOL, BS35 4EL"
 MY_COMPANY_ID = "Company ID: 12345678"
 
+# Logo Filenames
+WEB_LOGO = "VP Logo Horizontal Transparent White Lettering.png"
+PDF_LOGO = "logo.png"
+
 def extract_backmarket_data(uploaded_file):
     with pdfplumber.open(uploaded_file) as pdf:
         full_text = "\n".join([page.extract_text() for page in pdf.pages])
     
-    # 1. Metadata Extraction [cite: 12, 13]
+    # 1. Metadata Extraction
     order_no = re.search(r"Order no\. (\d+)", full_text)
     order_val = order_no.group(1) if order_no else "78197766"
     order_date = re.search(r"Date of order: ([\d/]+)", full_text)
     order_date_val = order_date.group(1) if order_date else "10/03/26"
     
-    # 2. Precision Address Extraction [cite: 15, 16, 17, 18, 19, 20]
+    # 2. Precision Address Extraction
     addr_match = re.search(r"(Company Capital PCC.*?)(?=\nBilling address|\nDelivery slip)", full_text, re.DOTALL)
     address_block = addr_match.group(1).strip() if addr_match else "Company Capital PCC\nLindsay Argent\nSolar House\n915 High Road\nN12 8QJ London GB"
 
-    # 3. Product Extraction [cite: 14]
+    # 3. Product Extraction
     item_match = re.search(r"Back Market Case.*", full_text)
     item_desc = item_match.group(0).strip() if item_match else "Back Market Case iPhone 15 and protective screen"
     
@@ -41,14 +45,14 @@ def create_invoice_pdf(data):
     pdf = FPDF()
     pdf.add_page()
     
-    # 1. LOGO IN PDF
-    if os.path.exists("logo.png"):
-        pdf.image("logo.png", 10, 8, 46) 
+    # 1. LOGO IN PDF (Using logo.png)
+    if os.path.exists(PDF_LOGO):
+        pdf.image(PDF_LOGO, 10, 8, 46) 
         pdf.set_y(38) 
     else:
         pdf.set_y(10)
         
-    # 2. SENDER ADDRESS [cite: 11]
+    # 2. SENDER ADDRESS
     pdf.set_x(10)
     pdf.set_font("Arial", 'B', 11)
     pdf.cell(0, 6, MY_COMPANY_NAME, ln=True)
@@ -57,7 +61,7 @@ def create_invoice_pdf(data):
     
     pdf.ln(10)
     
-    # 3. BILLED/DELIVERED TO [cite: 11, 15, 20]
+    # 3. BILLED/DELIVERED TO
     pdf.set_font("Arial", 'B', 9)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(95, 5, "BILLED TO", 0, 0)
@@ -72,13 +76,13 @@ def create_invoice_pdf(data):
     
     pdf.ln(10)
 
-    # 4. INVOICE INFO BAR [cite: 12, 13]
+    # 4. INVOICE INFO BAR (Pure Numerical)
     pdf.set_fill_color(245, 245, 245)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 10, f"  Invoice: {data['order_no']}           Date: {data['order_date']}", 0, 1, 'L', True)
     pdf.ln(5)
     
-    # 5. TABLE [cite: 14]
+    # 5. TABLE
     pdf.set_fill_color(40, 40, 40)
     pdf.set_text_color(255, 255, 255)
     pdf.cell(130, 10, " Description", 1, 0, 'L', True)
@@ -96,7 +100,7 @@ def create_invoice_pdf(data):
     pdf.cell(20, h, data['qty'], 1, 0, 'C') 
     pdf.cell(40, h, data['total'], 1, 1, 'C') 
     
-    # 6. TOTAL [cite: 14]
+    # 6. TOTAL (Clean Label)
     pdf.ln(5)
     pdf.set_font("Arial", 'B', 11)
     pdf.cell(150, 10, "TOTAL: ", 0, 0, 'R')
@@ -113,9 +117,9 @@ def create_invoice_pdf(data):
 # --- STREAMLIT APP ---
 st.set_page_config(page_title="Vertical Passage Invoice Generator", page_icon="📄")
 
-# Add logo to the app page
-if os.path.exists("logo.png"):
-    st.image("logo.png", width=150)
+# Use the White Lettering Logo for the Website Interface
+if os.path.exists(WEB_LOGO):
+    st.image(WEB_LOGO, width=250)
 
 st.title("Vertical Passage Invoice Generator")
 
