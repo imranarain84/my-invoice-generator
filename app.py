@@ -20,28 +20,23 @@ def extract_backmarket_data(uploaded_file):
         full_text = "\n".join([page.extract_text() for page in pdf.pages])
         tables = pdf.pages[0].extract_tables()
     
-    # 1. Metadata Extraction
     order_no = re.search(r"Order no\. (\d+)", full_text)
     order_val = order_no.group(1) if order_no else "N/A"
     order_date = re.search(r"Date of order: ([\d/]+)", full_text)
     order_date_val = order_date.group(1) if order_date else "10/03/26"
     
-    # 2. Shipping Extraction
     carrier_match = re.search(r"Shipping method:\s*(.*)", full_text)
     carrier = carrier_match.group(1).strip() if carrier_match else "Standard"
     ship_cost_match = re.search(r"Shipping costs\s*(£[\d\.]+)", full_text)
     ship_cost = ship_cost_match.group(1) if ship_cost_match else "£0.00"
 
-    # 3. Customer First Name Extraction (Tuned for single line)
     name_match = re.search(r"Hi\s+([A-Za-z]+),", full_text)
     first_name = name_match.group(1).strip() if name_match else "Lindsay"
     
-    # 4. Robust Address Extraction
-    # Target the block starting with Company Capital PCC specifically
+    # Robust Address Extraction
     addr_match = re.search(r"(Company Capital PCC.*?)(?=\nBilling address|\nDelivery slip)", full_text, re.DOTALL)
     address_block = addr_match.group(1).strip() if addr_match else "Company Capital PCC\nLindsay Argent\nSolar House\n915 High Road\nN12 8QJ London GB"
 
-    # 5. Table Extraction
     grand_total = "£0.00"
     if tables:
         for row in tables[0]:
@@ -68,21 +63,22 @@ def extract_backmarket_data(uploaded_file):
 
 def create_invoice_pdf(data):
     pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=25)
     pdf.add_page()
     
-    # 1. LOGO & SENDER (Tighter)
+    # 1. LOGO & SENDER (Restored Spacing)
     if os.path.exists(PDF_LOGO):
         pdf.image(PDF_LOGO, 10, 8, 46) 
-        pdf.set_y(30) 
+        pdf.set_y(32) 
     else:
         pdf.set_y(10)
         
     pdf.set_font("Arial", 'B', 11)
-    pdf.cell(0, 5, MY_COMPANY_NAME, ln=True)
+    pdf.cell(0, 6, MY_COMPANY_NAME, ln=True)
     pdf.set_font("Arial", size=9)
-    pdf.multi_cell(0, 4, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
+    pdf.multi_cell(0, 4.5, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
     
-    pdf.ln(10) 
+    pdf.ln(12) 
     
     # 2. ADDRESSES
     pdf.set_font("Arial", 'B', 9)
@@ -91,43 +87,44 @@ def create_invoice_pdf(data):
     pdf.cell(95, 5, "DELIVERED TO", 0, 1)
     
     pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", size=9)
+    pdf.set_font("Arial", size=10)
     y_start = pdf.get_y()
-    pdf.multi_cell(90, 4, data['address_block'])
+    pdf.multi_cell(90, 5, data['address_block'])
     pdf.set_xy(105, y_start)
-    pdf.multi_cell(90, 4, data['address_block'])
+    pdf.multi_cell(90, 5, data['address_block'])
     
-    pdf.ln(5) 
+    pdf.ln(10) 
 
     # 3. INVOICE BAR
     pdf.set_fill_color(245, 245, 245)
-    pdf.set_font("Arial", 'B', 9)
-    info_text = f"  Invoice: {data['order_no']}     Date: {data['order_date']}     Shipping Method: {data['carrier']}"
-    pdf.cell(0, 8, info_text, 0, 1, 'L', True)
-    pdf.ln(4)
+    pdf.set_font("Arial", 'B', 10)
+    info_text = f"  Invoice: {data['order_no']}           Date: {data['order_date']}           Shipping Method: {data['carrier']}"
+    pdf.cell(0, 10, info_text, 0, 1, 'L', True)
+    pdf.ln(5)
     
     # 4. TABLE HEADER
     w_desc, w_sku, w_qty, w_total = 95, 40, 20, 35
     pdf.set_fill_color(40, 40, 40)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(w_desc, 8, " DESCRIPTION", 1, 0, 'C', True)
-    pdf.cell(w_sku, 8, " SKU", 1, 0, 'C', True)
-    pdf.cell(w_qty, 8, " QTY", 1, 0, 'C', True)
-    pdf.cell(w_total, 8, " TOTAL", 1, 1, 'C', True)
+    pdf.set_font("Arial", 'B', 9)
+    pdf.cell(w_desc, 10, " DESCRIPTION", 1, 0, 'C', True)
+    pdf.cell(w_sku, 10, " SKU", 1, 0, 'C', True)
+    pdf.cell(w_qty, 10, " QTY", 1, 0, 'C', True)
+    pdf.cell(w_total, 10, " TOTAL", 1, 1, 'C', True)
     
     # 5. TABLE BODY
     pdf.set_text_color(0, 0, 0)
-    pdf.set_font("Arial", size=8.5)
+    pdf.set_font("Arial", size=9)
     
     for item in data['items']:
-        lines = pdf.multi_cell(w_desc, 4, item['desc'], split_only=True)
-        row_h = max(10, len(lines) * 5)
+        lines = pdf.multi_cell(w_desc, 5, item['desc'], split_only=True)
+        row_h = max(12, len(lines) * 6)
         curr_x, curr_y = pdf.get_x(), pdf.get_y()
         
         pdf.rect(curr_x, curr_y, w_desc, row_h)
-        v_offset = (row_h - (len(lines) * 4)) / 2
+        v_offset = (row_h - (len(lines) * 5)) / 2
         pdf.set_xy(curr_x, curr_y + v_offset)
-        pdf.multi_cell(w_desc, 4, item['desc'], border=0, align='C')
+        pdf.multi_cell(w_desc, 5, item['desc'], border=0, align='C')
         
         pdf.set_xy(curr_x + w_desc, curr_y)
         pdf.cell(w_sku, row_h, item['sku'], 1, 0, 'C')
@@ -135,35 +132,37 @@ def create_invoice_pdf(data):
         pdf.cell(w_total, row_h, item['total'], 1, 1, 'C')
     
     # 6. TOTALS
-    pdf.set_font("Arial", 'B', 9)
-    pdf.cell(w_desc + w_sku + w_qty, 7, "Shipping Cost: ", 0, 0, 'R')
-    pdf.cell(w_total, 7, data['ship_cost'], 1, 1, 'C')
-    
+    pdf.ln(5)
     pdf.set_font("Arial", 'B', 10)
-    pdf.cell(w_desc + w_sku + w_qty, 8, "TOTAL: ", 0, 0, 'R')
-    pdf.cell(w_total, 8, data['total'], 1, 1, 'C')
+    pdf.cell(w_desc + w_sku + w_qty, 8, "Shipping Cost: ", 0, 0, 'R')
+    pdf.cell(w_total, 8, data['ship_cost'], 1, 1, 'C')
     
-    # 7. TIGHTENED MESSAGE (Centered horizontally)
+    pdf.set_font("Arial", 'B', 11)
+    pdf.cell(w_desc + w_sku + w_qty, 10, "TOTAL: ", 0, 0, 'R')
+    pdf.cell(w_total, 10, data['total'], 1, 1, 'C')
+    
+    # 7. CENTERED MESSAGE
+    pdf.ln(12)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(0, 6, f"Hi {data['first_name']},", ln=True, align='C') # One line greeting
+    
+    pdf.set_font("Arial", '', 10)
+    pdf.ln(4)
+    msg = f"We hope you enjoy your order #{data['order_no']} from Vertical Passage LTD.\nLooks like your phone just found its new favorite case."
+    pdf.multi_cell(0, 5, msg, align='C')
+    
     pdf.ln(6)
-    pdf.set_font("Arial", '', 9)
+    help_msg = 'Need help? Just log in to your Back Market account, go to Orders, and click "Get Help."'
+    pdf.multi_cell(0, 5, help_msg, align='C')
     
-    # Hi [Name], on one line
-    line1_text = f"Hi {data['first_name']},"
-    pdf.set_font("Arial", 'B', 9)
-    pdf.cell(0, 5, line1_text, ln=True, align='C')
-    
-    pdf.set_font("Arial", '', 9)
-    pdf.multi_cell(0, 4, f"We hope you enjoy your order #{data['order_no']} from Vertical Passage LTD.\nLooks like your phone just found its new favorite case.", align='C')
-    pdf.ln(2)
-    pdf.multi_cell(0, 4, 'Need help? Just log in to your Back Market account, go to Orders, and click "Get Help."', align='C')
-    pdf.ln(2)
-    pdf.cell(0, 4, "Enjoy your new case,", ln=True, align='C')
-    pdf.set_font("Arial", 'B', 9)
-    pdf.cell(0, 4, "Vertical Passage", ln=True, align='C')
+    pdf.ln(10)
+    pdf.cell(0, 5, "Enjoy your new case,", ln=True, align='C')
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(0, 6, "Vertical Passage", ln=True, align='C')
 
-    # FOOTER
-    pdf.set_y(-15)
-    pdf.set_font("Arial", 'I', 7)
+    # FOOTER (Dynamic Position)
+    pdf.set_y(-25)
+    pdf.set_font("Arial", 'I', 8)
     pdf.set_text_color(150, 150, 150)
     pdf.cell(0, 5, "VAT inclusive at import. No additional tax charged to customer.", ln=True, align='C')
     
