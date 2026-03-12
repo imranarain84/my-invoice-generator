@@ -24,9 +24,9 @@ def extract_backmarket_data(uploaded_file):
     order_date = re.search(r"Date of order: ([\d/]+)", full_text)
     order_date_val = order_date.group(1) if order_date else "10/03/26"
     
-    # Extract First Name
-    name_match = re.search(r"Customer:\s*(\w+)", full_text)
-    first_name = name_match.group(1) if name_match else "Lindsay"
+    # Extract First Name Only (Lindsay)
+    name_match = re.search(r"Customer:\s*([A-Za-z]+)", full_text)
+    first_name = name_match.group(1) if name_match else "Customer"
     
     # Address Extraction
     addr_match = re.search(r"(Company Capital PCC.*?)(?=\nBilling address|\nDelivery slip)", full_text, re.DOTALL)
@@ -57,7 +57,7 @@ def create_invoice_pdf(data):
     pdf = FPDF()
     pdf.add_page()
     
-    # 1. LOGO & SENDER (Blue Box fix: closer to logo)
+    # 1. LOGO & SENDER (Tighter spacing for 1-page fit)
     if os.path.exists(PDF_LOGO):
         pdf.image(PDF_LOGO, 10, 8, 46) 
         pdf.set_y(32) 
@@ -69,8 +69,8 @@ def create_invoice_pdf(data):
     pdf.set_font("Arial", size=9)
     pdf.multi_cell(0, 4, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
     
-    # 2. SHIFT DOWN (Red Box fix: everything moved down)
-    pdf.ln(25) 
+    # 2. SHIFT DOWN (Slightly reduced to save space)
+    pdf.ln(18) 
     
     pdf.set_font("Arial", 'B', 9)
     pdf.set_text_color(100, 100, 100)
@@ -84,7 +84,7 @@ def create_invoice_pdf(data):
     pdf.set_xy(105, y_start)
     pdf.multi_cell(90, 5, data['address_block'])
     
-    pdf.ln(12)
+    pdf.ln(8) # Reduced spacing
 
     pdf.set_fill_color(245, 245, 245)
     pdf.set_font("Arial", 'B', 10)
@@ -122,29 +122,52 @@ def create_invoice_pdf(data):
     pdf.cell(w_desc + w_sku + w_qty, 10, "TOTAL: ", 0, 0, 'R')
     pdf.cell(w_total, 10, data['total'], 1, 1, 'C')
     
-    # 3. CUSTOMER MESSAGE (Orange Box)
-    pdf.ln(15)
-    pdf.set_font("Arial", size=10)
-    pdf.set_x(15)
-    
-    msg_y = pdf.get_y()
-    pdf.set_xy(10, msg_y)
-    
-    # Centering logic for the message
+    # 3. CUSTOMER MESSAGE (Centered on page)
+    pdf.ln(10)
     pdf.set_font("Arial", '', 10)
+    
+    # Define text chunks for centering logic
+    line1 = f"Hi {data['first_name']},"
+    line2 = f"We hope you enjoy your order #{data['order_no']} from Vertical Passage LTD."
+    line3 = "Looks like your phone just found its new favorite case."
+    line4 = 'Need help? Just log in to your Back Market account, go to Orders, and click "Get Help."'
+    line5 = "Enjoy your new case,"
+    line6 = "Vertical Passage"
+
+    # Centering and Bold Logic for Line 1
+    pdf.set_x(10)
+    full_line1_w = pdf.get_string_width("Hi ") + pdf.get_string_width(data['first_name']) + pdf.get_string_width(",")
+    pdf.set_x((210 - full_line1_w) / 2)
     pdf.write(5, "Hi ")
     pdf.set_font("Arial", 'B', 10)
-    pdf.write(5, f"{data['first_name']}")
+    pdf.write(5, data['first_name'])
     pdf.set_font("Arial", '', 10)
-    pdf.write(5, f",\n\nWe hope you enjoy your order #")
+    pdf.write(5, ",")
+    pdf.ln(10)
+
+    # Centering and Bold Logic for Line 2
+    part1 = "We hope you enjoy your order #"
+    part2 = data['order_no']
+    part3 = " from Vertical Passage LTD."
+    full_line2_w = pdf.get_string_width(part1) + pdf.get_string_width(part2) + pdf.get_string_width(part3)
+    pdf.set_x((210 - full_line2_w) / 2)
+    pdf.write(5, part1)
     pdf.set_font("Arial", 'B', 10)
-    pdf.write(5, f"{data['order_no']}")
+    pdf.write(5, part2)
     pdf.set_font("Arial", '', 10)
-    pdf.write(5, " from Vertical Passage LTD.\nLooks like your phone just found its new favorite case.\n\nNeed help? Just log in to your Back Market account, go to Orders, and click \"Get Help.\"\n\nEnjoy your new case,\n")
+    pdf.write(5, part3)
+    pdf.ln(6)
+
+    # Center remaining lines
+    pdf.cell(0, 6, line3, ln=True, align='C')
+    pdf.ln(6)
+    pdf.cell(0, 6, line4, ln=True, align='C')
+    pdf.ln(10)
+    pdf.cell(0, 6, line5, ln=True, align='C')
     pdf.set_font("Arial", 'B', 10)
-    pdf.write(5, "Vertical Passage")
+    pdf.cell(0, 6, line6, ln=True, align='C')
     
-    pdf.set_y(-25)
+    pdf.set_y(-22)
     pdf.set_font("Arial", 'I', 8)
     pdf.set_text_color(150, 150, 150)
     pdf.cell(0, 5, "VAT inclusive at import. No additional tax charged to customer.", ln=True, align='C')
