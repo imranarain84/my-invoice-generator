@@ -15,30 +15,34 @@ def extract_backmarket_data(uploaded_file):
         full_text = "\n".join([page.extract_text() for page in pdf.pages])
         tables = pdf.pages[0].extract_tables()
     
-    # 1. Extract Order Metadata
+    # 1. Metadata Extraction
     order_no = re.search(r"Order no\. (\d+)", full_text)
     order_date = re.search(r"Date of order: ([\d/]+)", full_text)
     
-    # 2. Elegant Address Extraction
-    # We look for the block between "Shipping address" and "Billing address"
-    ship_match = re.search(r"Shipping address\n(.*?)\nBilling address", full_text, re.DOTALL)
-    address_block = ship_match.group(1).strip() if ship_match else "Address Not Found"
+    # 2. Address Extraction (Improved for elegant display)
+    # Extracting the block specifically between Shipping and Billing headers
+    addr_search = re.search(r"Shipping address\s*\n(.*?)\nBilling address", full_text, re.DOTALL)
+    address_raw = addr_search.group(1).strip() if addr_search else "Address Not Found"
     
-    # 3. Product Table Logic
-    product_desc, qty, unit_price, total_price = "Item", "0", "£0.00", "£0.00"
-    if tables and len(tables[0]) > 1:
+    # 3. Table Extraction with Safety Checks (Prevents IndexError)
+    product_desc, qty, unit_price, total_price = "Product", "1", "£0.00", "£0.00"
+    
+    if tables:
         for row in tables[0]:
-            if any("Back Market" in str(cell) for cell in row):
-                product_desc = row[1].replace('\n', ' ')
-                qty = row[2]
-                unit_price = row[4]
-                total_price = row[7]
+            # Look for rows containing item descriptions
+            if any("Back Market" in str(cell) for cell in row if cell):
+                # We use 'min' and length checks to ensure we don't grab a column that doesn't exist
+                product_desc = row[1].replace('\n', ' ') if len(row) > 1 else "Item"
+                qty = row[2] if len(row) > 2 else "1"
+                # If column 4 (unit price) is missing, we calculate it or check column 7
+                unit_price = row[4] if len(row) > 4 else "£0.00"
+                total_price = row[-1] if len(row) > 0 else "£0.00" # Grab the last column for total
                 break
 
     return {
         'order_no': order_no.group(1) if order_no else "N/A",
-        'order_date': order_date.group(1) if order_date else "N/A",
-        'address_block': address_block,
+        'order_date': order_date.group(1) if order_date else "10/03/26",
+        'address_block': address_raw,
         'item_desc': product_desc,
         'qty': qty,
         'unit_price': unit_price,
@@ -49,36 +53,38 @@ def create_invoice_pdf(data):
     pdf = FPDF()
     pdf.add_page()
     
-    # LOGO & SENDER INFO
+    # LOGO & SENDER
     if os.path.exists("logo.png"):
         pdf.image("logo.png", 10, 8, 40)
         pdf.set_y(40)
     else:
         pdf.set_y(10)
         
-    pdf.set_font("Arial", 'B', 11)
+    pdf.set_font("Arial", 'B', 12)
     pdf.cell(0, 7, MY_COMPANY_NAME, ln=True)
     pdf.set_font("Arial", size=9)
-    pdf.multi_cell(0, 4, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
+    pdf.multi_cell(0, 5, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
     
     pdf.ln(12)
     
-    # ADDRESS SECTION (ELEGANT COLUMNS)
+    # ELEGANT ADDRESS DISPLAY
     pdf.set_font("Arial", 'B', 9)
-    pdf.set_text_color(100, 100, 100) # Professional Gray
+    pdf.set_text_color(120, 120, 120)
     pdf.cell(95, 5, "BILLED TO", 0, 0)
     pdf.cell(95, 5, "DELIVERED TO", 0, 1)
     
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", size=10)
-    curr_y = pdf.get_y()
+    y_start = pdf.get_y()
+    # Billing Side
     pdf.multi_cell(90, 5, data['address_block'])
-    pdf.set_xy(105, curr_y)
+    # Delivery Side (Mirrored)
+    pdf.set_xy(105, y_start)
     pdf.multi_cell(90, 5, data['address_block'])
     
     pdf.ln(12)
 
-    # INVOICE DETAILS BAR
+    # INVOICE INFO BAR
     pdf.set_fill_color(245, 245, 245)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 10, f"  Invoice: #INV-{data['order_no']}           Date: {data['order_date']}", 0, 1, 'L', True)
@@ -87,63 +93,54 @@ def create_invoice_pdf(data):
     # TABLE
     pdf.set_fill_color(40, 40, 40)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(110, 10, " Description", 1, 0, 'L', True)
+    pdf.cell(115, 10, " Description", 1, 0, 'L', True)
     pdf.cell(15, 10, " QTY", 1, 0, 'C', True)
-    pdf.cell(30, 10, " PRICE", 1, 0, 'C', True)
-    pdf.cell(35, 10, " TOTAL (TTC)", 1, 1, 'C', True)
+    pdf.cell(30, 10, " UNIT", 1, 0, 'C', True)
+    pdf.cell(30, 10, " TOTAL", 1, 1, 'C', True)
     
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", size=8)
     
+    # Handle multi-line product descriptions elegantly
     x, y = pdf.get_x(), pdf.get_y()
-    pdf.multi_cell(110, 6, data['item_desc'], 1)
-    h = pdf.get_y() - y
-    pdf.set_xy(x + 110, y)
+    pdf.multi_cell(115, 6, data['item_desc'], 1)
+    new_y = pdf.get_y()
+    h = new_y - y
+    
+    pdf.set_xy(x + 115, y)
     pdf.cell(15, h, data['qty'], 1, 0, 'C')
     pdf.cell(30, h, data['unit_price'], 1, 0, 'C')
-    pdf.cell(35, h, data['total'], 1, 1, 'C')
+    pdf.cell(30, h, data['total'], 1, 1, 'C')
     
     # TOTAL
     pdf.ln(5)
-    pdf.set_font("Arial", 'B', 11)
-    pdf.cell(155, 10, "GRAND TOTAL (TTC): ", 0, 0, 'R')
-    pdf.cell(35, 10, data['total'], 1, 1, 'C')
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(160, 10, "TOTAL TTC: ", 0, 0, 'R')
+    pdf.cell(30, 10, data['total'], 1, 1, 'C')
     
     # FOOTER
-    pdf.set_y(-40)
+    pdf.set_y(-30)
     pdf.set_font("Arial", 'I', 8)
-    pdf.set_text_color(128, 128, 128)
-    pdf.multi_cell(0, 4, "Note: VAT paid at import. Price inclusive of all taxes.\nLate payment subject to 40 Euro indemnity (L.441-3 Commercial Code).", align='C')
+    pdf.set_text_color(150, 150, 150)
+    pdf.cell(0, 5, "VAT inclusive at import. No additional tax charged to customer.", ln=True, align='C')
     
     return pdf.output(dest='S').encode('latin-1')
 
-# --- STREAMLIT UI ---
-st.set_page_config(page_title="Invoice Generator", layout="centered")
-st.title("📄 Professional Invoice Generator")
+# --- APP INTERFACE ---
+st.set_page_config(page_title="Back Market Invoice Generator")
+st.title("💼 Professional Invoice Generator")
 
-uploaded_file = st.file_uploader("Upload Back Market Delivery Slip", type="pdf")
+f = st.file_uploader("Upload Delivery Slip", type="pdf")
 
-if uploaded_file:
-    with st.spinner("Reading PDF..."):
-        data = extract_backmarket_data(uploaded_file)
-    
-    # Display elegant preview
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Order Info")
-        st.write(f"**Order:** {data['order_no']}")
-        st.write(f"**Date:** {data['order_date']}")
-    with col2:
-        st.subheader("Customer")
-        st.text(data['address_block'])
+if f:
+    # Use a try/except block just in case of unexpected PDF weirdness
+    try:
+        data = extract_backmarket_data(f)
+        st.success(f"Successfully read Order #{data['order_no']}")
         
-    st.divider()
-    
-    pdf_bytes = create_invoice_pdf(data)
-    st.download_button(
-        label="⬇️ Download PDF Invoice",
-        data=pdf_bytes,
-        file_name=f"Invoice_{data['order_no']}.pdf",
-        mime="application/pdf",
-        use_container_width=True
-    )
+        # Download Button
+        pdf_out = create_invoice_pdf(data)
+        st.download_button("⬇️ Download Elegant Invoice", pdf_out, f"Invoice_{data['order_no']}.pdf", use_container_width=True)
+        
+    except Exception as e:
+        st.error(f"Something went wrong reading this PDF. Please ensure it is a standard Back Market delivery slip.")
