@@ -28,24 +28,24 @@ def extract_backmarket_data(uploaded_file):
     
     # 2. Name Extraction
     name_match = re.search(r"Hi\s+([A-Za-z]+),", full_text)
-    first_name = name_match.group(1).strip() if name_match else "Lindsay"
+    first_name = name_match.group(1).strip() if name_match else "Customer"
     
-    # Extract Full Name specifically from the Customer field
     full_name_match = re.search(r"Customer:\s*(.*)", full_text)
-    full_name = full_name_match.group(1).strip() if full_name_match else f"{first_name} Argent"
+    full_name = full_name_match.group(1).strip() if full_name_match else f"{first_name}"
     
-    # 3. FIX: Robust Address Extraction
-    # Grabs text between "Shipping address" and "Billing address"
-    shipping_match = re.search(r"Shipping address\s*(.*?)(?=Billing address|Delivery slip|$)", full_text, re.DOTALL)
-    address_block = shipping_match.group(1).strip() if shipping_match else "Company Capital PCC\nLindsay Argent\nSolar House\n915 High Road\nN12 8QJ London GB"
+    # 3. UNIVERSAL ADDRESS EXTRACTION
+    # Captures everything between 'Shipping address' and 'Billing address'
+    addr_search = re.search(r"Shipping address\s*\n(.*?)(?=\nBilling address|\nDelivery slip|$)", full_text, re.DOTALL)
+    address_block = addr_search.group(1).strip() if addr_search else "Address Not Detected"
 
-    # 4. Table Extraction (Items, Carrier, and Shipping)
+    # 4. Table Extraction
     carrier = "Standard"
     ship_cost = "£0.00"
     grand_total = "£0.00"
 
     if tables:
         for row in tables[0]:
+            # Detect item rows: Line no must be a number
             if len(row) > 7 and row[0] and row[0].isdigit():
                 items.append({
                     'desc': row[1].replace('\n', ' ').strip(),
@@ -53,7 +53,9 @@ def extract_backmarket_data(uploaded_file):
                     'sku': str(row[3]),
                     'total': str(row[7]).replace(',', '.')
                 })
+                # Capture Carrier from the 6th column (index 5)
                 if row[5]: carrier = str(row[5]).strip()
+                # Capture Shipping Cost from the 7th column (index 6)
                 if row[6]: ship_cost = str(row[6]).strip()
 
             if "TOTAL" in str(row).upper():
@@ -168,6 +170,7 @@ def create_invoice_pdf(data):
 # --- STREAMLIT APP ---
 st.set_page_config(page_title="Invoice Generator", page_icon="📄")
 
+# App Header Centering
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     if os.path.exists(WEB_LOGO):
