@@ -158,41 +158,39 @@ def create_invoice_pdf(data):
 # --- STREAMLIT APP ---
 st.set_page_config(page_title="Invoice Generator", page_icon="📄")
 
-# CUSTOM CSS FOR GEMINI LOOK
+# CUSTOM CSS FOR POSITIONING
 st.markdown("""
     <style>
-    .main {
-        background-color: #0e1117;
-    }
-    .stTitle {
-        font-weight: 300 !important;
-        letter-spacing: -1px;
-        padding-top: 40px !important;
-        padding-bottom: 20px !important;
-    }
-    .stFileUploader {
-        padding-top: 20px;
-    }
-    /* Logo Spacing */
+    /* Gemini look: logo closer to top */
     .logo-container {
-        padding-top: 60px;
-        padding-bottom: 40px;
+        padding-top: 10px !important; /* SIGNIFICANTLY REDUCED */
         display: flex;
         justify-content: center;
+        align-items: center;
+        width: 100%;
+    }
+    .stTitle {
+        text-align: center;
+        width: 100%;
+        font-weight: 300 !important;
+        letter-spacing: -1px;
+        padding-top: 10px !important; 
+        padding-bottom: 30px !important;
+    }
+    .stFileUploader {
+        padding-top: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# Centered Logo with Container for Spacing
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    if os.path.exists(WEB_LOGO):
-        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
-        st.image(WEB_LOGO, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+# Centered Logo pushed toward the top
+if os.path.exists(WEB_LOGO):
+    st.markdown('<div class="logo-container">', unsafe_allow_html=True)
+    st.image(WEB_LOGO, width=400)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-# Simple Centered Title
-st.markdown("<h1 style='text-align: center; color: white;'>Invoice Generator</h1>", unsafe_allow_html=True)
+# Title immediately below logo
+st.title("Invoice Generator", anchor=False)
 
 if 'uploader_key' not in st.session_state:
     st.session_state.uploader_key = 0
