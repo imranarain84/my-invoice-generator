@@ -28,7 +28,6 @@ def extract_backmarket_data(uploaded_file):
     name_match = re.search(r"Customer:\s*([A-Za-z]+)", full_text)
     first_name = name_match.group(1) if name_match else "Customer"
     
-    # Address Extraction
     addr_match = re.search(r"(Company Capital PCC.*?)(?=\nBilling address|\nDelivery slip)", full_text, re.DOTALL)
     address_block = addr_match.group(1).strip() if addr_match else "Company Capital PCC\nLindsay Argent\nSolar House\n915 High Road\nN12 8QJ London GB"
 
@@ -57,7 +56,7 @@ def create_invoice_pdf(data):
     pdf = FPDF()
     pdf.add_page()
     
-    # 1. LOGO & SENDER (PDF layout remains standard)
+    # 1. LOGO & SENDER (PDF layout)
     if os.path.exists(PDF_LOGO):
         pdf.image(PDF_LOGO, 10, 8, 46) 
         pdf.set_y(32) 
@@ -118,4 +117,68 @@ def create_invoice_pdf(data):
     
     pdf.ln(5)
     pdf.set_font("Arial", 'B', 11)
-    pdf.cell(w_desc + w_sku + w_qty
+    # --- FIXED PARENTHESIS BELOW ---
+    pdf.cell(w_desc + w_sku + w_qty, 10, "TOTAL: ", 0, 0, 'R')
+    pdf.cell(w_total, 10, data['total'], 1, 1, 'C')
+    
+    # 3. CUSTOMER MESSAGE (Centered)
+    pdf.ln(10)
+    pdf.set_font("Arial", '', 10)
+    
+    # Line 1 (Hi Lindsay,)
+    full_line1_w = pdf.get_string_width("Hi ") + pdf.get_string_width(data['first_name']) + pdf.get_string_width(",")
+    pdf.set_x((210 - full_line1_w) / 2)
+    pdf.write(5, "Hi ")
+    pdf.set_font("Arial", 'B', 10)
+    pdf.write(5, data['first_name'])
+    pdf.set_font("Arial", '', 10)
+    pdf.write(5, ",")
+    pdf.ln(10)
+
+    # Line 2 (Order Number)
+    part1, part2, part3 = "We hope you enjoy your order #", data['order_no'], " from Vertical Passage LTD."
+    full_line2_w = pdf.get_string_width(part1) + pdf.get_string_width(part2) + pdf.get_string_width(part3)
+    pdf.set_x((210 - full_line2_w) / 2)
+    pdf.write(5, part1)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.write(5, part2)
+    pdf.set_font("Arial", '', 10)
+    pdf.write(5, part3)
+    pdf.ln(6)
+
+    pdf.cell(0, 6, "Looks like your phone just found its new favorite case.", ln=True, align='C')
+    pdf.ln(6)
+    pdf.cell(0, 6, 'Need help? Just log in to your Back Market account, go to Orders, and click "Get Help."', ln=True, align='C')
+    pdf.ln(10)
+    pdf.cell(0, 6, "Enjoy your new case,", ln=True, align='C')
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(0, 6, "Vertical Passage", ln=True, align='C')
+    
+    pdf.set_y(-22)
+    pdf.set_font("Arial", 'I', 8)
+    pdf.set_text_color(150, 150, 150)
+    pdf.cell(0, 5, "VAT inclusive at import. No additional tax charged to customer.", ln=True, align='C')
+    
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- STREAMLIT APP ---
+st.set_page_config(page_title="Invoice Generator", page_icon="📄")
+
+# Layout trick to center the logo on the app page
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    if os.path.exists(WEB_LOGO):
+        st.image(WEB_LOGO, use_container_width=True)
+
+st.markdown("<h1 style='text-align: center;'>Invoice Generator</h1>", unsafe_allow_html=True)
+
+f = st.file_uploader("Upload Back Market Delivery Slip", type="pdf")
+
+if f:
+    try:
+        data = extract_backmarket_data(f)
+        st.success(f"Order {data['order_no']} loaded.")
+        pdf_out = create_invoice_pdf(data)
+        st.download_button("Download Invoice", pdf_out, f"Invoice_{data['order_no']}.pdf", use_container_width=True)
+    except Exception as e:
+        st.error(f"Error: {e}")
