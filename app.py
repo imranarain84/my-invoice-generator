@@ -20,32 +20,25 @@ def extract_backmarket_data(uploaded_file):
         full_text = "\n".join([page.extract_text() for page in pdf.pages])
         tables = pdf.pages[0].extract_tables()
     
-    # 1. Metadata Extraction
     order_no = re.search(r"Order no\. (\d+)", full_text)
     order_val = order_no.group(1) if order_no else "N/A"
     order_date = re.search(r"Date of order: ([\d/]+)", full_text)
     order_date_val = order_date.group(1) if order_date else "10/03/26"
     
-    # 2. Shipping Extraction
     carrier_match = re.search(r"Shipping method:\s*(.*)", full_text)
     carrier = carrier_match.group(1).strip() if carrier_match else "Standard"
     ship_cost_match = re.search(r"Shipping costs\s*(£[\d\.]+)", full_text)
     ship_cost = ship_cost_match.group(1) if ship_cost_match else "£0.00"
 
-    # 3. Name Extraction for Filename (from Billed To / Greeting)
-    # Extracts first name for the message and full name for the file
     name_match = re.search(r"Hi\s+([A-Za-z]+),", full_text)
     first_name = name_match.group(1).strip() if name_match else "Lindsay"
     
-    # Extraction for Last Name (often the line after Company Capital PCC)
     full_name_match = re.search(r"Company Capital PCC\n([A-Za-z]+\s+[A-Za-z]+)", full_text)
     full_name = full_name_match.group(1).strip() if full_name_match else f"{first_name} Argent"
     
-    # 4. Address Extraction
     addr_match = re.search(r"(Company Capital PCC.*?)(?=\nBilling address|\nDelivery slip)", full_text, re.DOTALL)
     address_block = addr_match.group(1).strip() if addr_match else "Company Capital PCC\nLindsay Argent\nSolar House\n915 High Road\nN12 8QJ London GB"
 
-    # 5. Table Extraction
     grand_total = "£0.00"
     if tables:
         for row in tables[0]:
@@ -88,7 +81,6 @@ def create_invoice_pdf(data):
     pdf.multi_cell(0, 4.5, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
     
     pdf.ln(6) 
-    
     pdf.set_font("Arial", 'B', 9)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(95, 5, "BILLED TO", 0, 0)
@@ -102,7 +94,6 @@ def create_invoice_pdf(data):
     pdf.multi_cell(90, 5, data['address_block'])
     
     pdf.ln(6) 
-
     pdf.set_fill_color(245, 245, 245)
     pdf.set_font("Arial", 'B', 10)
     info_text = f"  Invoice: {data['order_no']}           Date: {data['order_date']}           Shipping Method: {data['carrier']}"
@@ -125,12 +116,10 @@ def create_invoice_pdf(data):
         lines = pdf.multi_cell(w_desc, 5, item['desc'], split_only=True)
         row_h = max(12, len(lines) * 6)
         curr_x, curr_y = pdf.get_x(), pdf.get_y()
-        
         pdf.rect(curr_x, curr_y, w_desc, row_h)
         v_offset = (row_h - (len(lines) * 5)) / 2
         pdf.set_xy(curr_x, curr_y + v_offset)
         pdf.multi_cell(w_desc, 5, item['desc'], border=0, align='C')
-        
         pdf.set_xy(curr_x + w_desc, curr_y)
         pdf.cell(w_sku, row_h, item['sku'], 1, 0, 'C')
         pdf.cell(w_qty, row_h, item['qty'], 1, 0, 'C')
@@ -148,36 +137,62 @@ def create_invoice_pdf(data):
     pdf.ln(6)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 6, f"Hi {data['first_name']},", ln=True, align='C')
-    
     pdf.set_font("Arial", '', 10)
     pdf.ln(2)
     msg1 = f"We hope you enjoy your order #{data['order_no']} from Vertical Passage LTD.".strip()
     msg2 = "Looks like your phone just found its new favorite case.".strip()
     pdf.multi_cell(0, 5, msg1 + "\n" + msg2, align='C')
-    
     pdf.ln(3)
     help_msg = 'Need help? Just log in to your Back Market account, go to Orders, and click "Get Help."'.strip()
     pdf.multi_cell(0, 5, help_msg, align='C')
-    
     pdf.ln(5)
     pdf.cell(0, 5, "Enjoy your new case,", ln=True, align='C')
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 5, "Vertical Passage", ln=True, align='C')
-
     pdf.set_y(-12) 
     pdf.set_font("Arial", 'I', 8)
     pdf.set_text_color(150, 150, 150)
     pdf.cell(0, 5, "VAT inclusive at import. No additional tax charged to customer.", ln=True, align='C')
-    
     return pdf.output(dest='S').encode('latin-1')
 
 # --- STREAMLIT APP ---
 st.set_page_config(page_title="Invoice Generator", page_icon="📄")
+
+# CUSTOM CSS FOR GEMINI LOOK
+st.markdown("""
+    <style>
+    .main {
+        background-color: #0e1117;
+    }
+    .stTitle {
+        font-weight: 300 !important;
+        letter-spacing: -1px;
+        padding-top: 40px !important;
+        padding-bottom: 20px !important;
+    }
+    .stFileUploader {
+        padding-top: 20px;
+    }
+    /* Logo Spacing */
+    .logo-container {
+        padding-top: 60px;
+        padding-bottom: 40px;
+        display: flex;
+        justify-content: center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Centered Logo with Container for Spacing
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     if os.path.exists(WEB_LOGO):
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
         st.image(WEB_LOGO, use_container_width=True)
-st.markdown("<h1 style='text-align: center;'>Invoice Generator</h1>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# Simple Centered Title
+st.markdown("<h1 style='text-align: center; color: white;'>Invoice Generator</h1>", unsafe_allow_html=True)
 
 if 'uploader_key' not in st.session_state:
     st.session_state.uploader_key = 0
@@ -189,8 +204,6 @@ if f:
         data = extract_backmarket_data(f)
         st.success(f"Order {data['order_no']} loaded.")
         pdf_out = create_invoice_pdf(data)
-        
-        # New Filename logic: First Last_OrderNumber.pdf
         download_filename = f"{data['full_name']}_{data['order_no']}.pdf"
         
         col_dl, col_rs = st.columns([3, 1])
