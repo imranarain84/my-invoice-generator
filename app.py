@@ -158,15 +158,16 @@ def create_invoice_pdf(data):
 # --- STREAMLIT APP ---
 st.set_page_config(page_title="Invoice Generator", page_icon="📄")
 
-# 1. Centered Logo
+# 1. CENTERED LOGO
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     if os.path.exists(WEB_LOGO):
         st.image(WEB_LOGO, use_container_width=True)
 
-# 2. Centered Text
+# 2. CENTERED TITLE
 st.markdown("<h1 style='text-align: center;'>Invoice Generator</h1>", unsafe_allow_html=True)
 
+# THE REST OF THE APP (Left-justified as standard)
 if 'uploader_key' not in st.session_state:
     st.session_state.uploader_key = 0
 
