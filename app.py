@@ -33,7 +33,6 @@ def extract_backmarket_data(uploaded_file):
     name_match = re.search(r"Hi\s+([A-Za-z]+),", full_text)
     first_name = name_match.group(1).strip() if name_match else "Lindsay"
     
-    # Robust Address Extraction
     addr_match = re.search(r"(Company Capital PCC.*?)(?=\nBilling address|\nDelivery slip)", full_text, re.DOTALL)
     address_block = addr_match.group(1).strip() if addr_match else "Company Capital PCC\nLindsay Argent\nSolar House\n915 High Road\nN12 8QJ London GB"
 
@@ -63,10 +62,10 @@ def extract_backmarket_data(uploaded_file):
 
 def create_invoice_pdf(data):
     pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=25)
+    # Margin set to 15 to give maximum room on one page
+    pdf.set_auto_page_break(auto=True, margin=15) 
     pdf.add_page()
     
-    # 1. LOGO & SENDER (Restored Spacing)
     if os.path.exists(PDF_LOGO):
         pdf.image(PDF_LOGO, 10, 8, 46) 
         pdf.set_y(32) 
@@ -78,9 +77,8 @@ def create_invoice_pdf(data):
     pdf.set_font("Arial", size=9)
     pdf.multi_cell(0, 4.5, f"{MY_COMPANY_ADDRESS}\n{MY_COMPANY_ID}")
     
-    pdf.ln(12) 
+    pdf.ln(8) # Tighter vertical spacing
     
-    # 2. ADDRESSES
     pdf.set_font("Arial", 'B', 9)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(95, 5, "BILLED TO", 0, 0)
@@ -93,16 +91,14 @@ def create_invoice_pdf(data):
     pdf.set_xy(105, y_start)
     pdf.multi_cell(90, 5, data['address_block'])
     
-    pdf.ln(10) 
+    pdf.ln(6) 
 
-    # 3. INVOICE BAR
     pdf.set_fill_color(245, 245, 245)
     pdf.set_font("Arial", 'B', 10)
     info_text = f"  Invoice: {data['order_no']}           Date: {data['order_date']}           Shipping Method: {data['carrier']}"
     pdf.cell(0, 10, info_text, 0, 1, 'L', True)
-    pdf.ln(5)
+    pdf.ln(4)
     
-    # 4. TABLE HEADER
     w_desc, w_sku, w_qty, w_total = 95, 40, 20, 35
     pdf.set_fill_color(40, 40, 40)
     pdf.set_text_color(255, 255, 255)
@@ -112,7 +108,6 @@ def create_invoice_pdf(data):
     pdf.cell(w_qty, 10, " QTY", 1, 0, 'C', True)
     pdf.cell(w_total, 10, " TOTAL", 1, 1, 'C', True)
     
-    # 5. TABLE BODY
     pdf.set_text_color(0, 0, 0)
     pdf.set_font("Arial", size=9)
     
@@ -131,8 +126,7 @@ def create_invoice_pdf(data):
         pdf.cell(w_qty, row_h, item['qty'], 1, 0, 'C')
         pdf.cell(w_total, row_h, item['total'], 1, 1, 'C')
     
-    # 6. TOTALS
-    pdf.ln(5)
+    pdf.ln(3)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(w_desc + w_sku + w_qty, 8, "Shipping Cost: ", 0, 0, 'R')
     pdf.cell(w_total, 8, data['ship_cost'], 1, 1, 'C')
@@ -141,27 +135,27 @@ def create_invoice_pdf(data):
     pdf.cell(w_desc + w_sku + w_qty, 10, "TOTAL: ", 0, 0, 'R')
     pdf.cell(w_total, 10, data['total'], 1, 1, 'C')
     
-    # 7. CENTERED MESSAGE
-    pdf.ln(12)
+    # Message Block - Stripping trailing whitespace to prevent Page 2 jumps
+    pdf.ln(6)
     pdf.set_font("Arial", 'B', 10)
-    pdf.cell(0, 6, f"Hi {data['first_name']},", ln=True, align='C') # One line greeting
+    pdf.cell(0, 6, f"Hi {data['first_name']},", ln=True, align='C')
     
     pdf.set_font("Arial", '', 10)
-    pdf.ln(4)
-    msg = f"We hope you enjoy your order #{data['order_no']} from Vertical Passage LTD.\nLooks like your phone just found its new favorite case."
+    pdf.ln(2)
+    msg = f"We hope you enjoy your order #{data['order_no']} from Vertical Passage LTD.\nLooks like your phone just found its new favorite case.".strip()
     pdf.multi_cell(0, 5, msg, align='C')
     
-    pdf.ln(6)
-    help_msg = 'Need help? Just log in to your Back Market account, go to Orders, and click "Get Help."'
+    pdf.ln(3)
+    help_msg = 'Need help? Just log in to your Back Market account, go to Orders, and click "Get Help."'.strip()
     pdf.multi_cell(0, 5, help_msg, align='C')
     
-    pdf.ln(10)
+    pdf.ln(6)
     pdf.cell(0, 5, "Enjoy your new case,", ln=True, align='C')
     pdf.set_font("Arial", 'B', 10)
-    pdf.cell(0, 6, "Vertical Passage", ln=True, align='C')
+    pdf.cell(0, 5, "Vertical Passage", ln=True, align='C')
 
-    # FOOTER (Dynamic Position)
-    pdf.set_y(-25)
+    # Force Footer to absolute bottom of the current page
+    pdf.set_y(-16) 
     pdf.set_font("Arial", 'I', 8)
     pdf.set_text_color(150, 150, 150)
     pdf.cell(0, 5, "VAT inclusive at import. No additional tax charged to customer.", ln=True, align='C')
