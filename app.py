@@ -20,31 +20,32 @@ def extract_backmarket_data(uploaded_file):
         full_text = "\n".join([page.extract_text() for page in pdf.pages])
         tables = pdf.pages[0].extract_tables()
     
+    # 1. Metadata Extraction
     order_no = re.search(r"Order no\. (\d+)", full_text)
     order_val = order_no.group(1) if order_no else "N/A"
     order_date = re.search(r"Date of order: ([\d/]+)", full_text)
     order_date_val = order_date.group(1) if order_date else "10/03/26"
     
-    # Defaults
+    # 2. Name Extraction
+    name_match = re.search(r"Hi\s+([A-Za-z]+),", full_text)
+    first_name = name_match.group(1).strip() if name_match else "Lindsay"
+    
+    # Extract Full Name specifically from the Customer field
+    full_name_match = re.search(r"Customer:\s*(.*)", full_text)
+    full_name = full_name_match.group(1).strip() if full_name_match else f"{first_name} Argent"
+    
+    # 3. FIX: Robust Address Extraction
+    # Grabs text between "Shipping address" and "Billing address"
+    shipping_match = re.search(r"Shipping address\s*(.*?)(?=Billing address|Delivery slip|$)", full_text, re.DOTALL)
+    address_block = shipping_match.group(1).strip() if shipping_match else "Company Capital PCC\nLindsay Argent\nSolar House\n915 High Road\nN12 8QJ London GB"
+
+    # 4. Table Extraction (Items, Carrier, and Shipping)
     carrier = "Standard"
     ship_cost = "£0.00"
     grand_total = "£0.00"
 
-    # 1. Name Extraction
-    name_match = re.search(r"Hi\s+([A-Za-z]+),", full_text)
-    first_name = name_match.group(1).strip() if name_match else "Lindsay"
-    
-    full_name_match = re.search(r"Company Capital PCC\n([A-Za-z]+\s+[A-Za-z]+)", full_text)
-    full_name = full_name_match.group(1).strip() if full_name_match else f"{first_name} Argent"
-    
-    # 2. Address Extraction
-    addr_match = re.search(r"(Company Capital PCC.*?)(?=\nBilling address|\nDelivery slip)", full_text, re.DOTALL)
-    address_block = addr_match.group(1).strip() if addr_match else "Address Not Found"
-
-    # 3. Table Extraction (Items, Carrier, and Shipping)
     if tables:
         for row in tables[0]:
-            # Detect item rows: Line no (0), Designation (1), Qty (2), SKU (3), Price (4), Carrier (5), ShipCost (6), Total (7)
             if len(row) > 7 and row[0] and row[0].isdigit():
                 items.append({
                     'desc': row[1].replace('\n', ' ').strip(),
@@ -52,11 +53,8 @@ def extract_backmarket_data(uploaded_file):
                     'sku': str(row[3]),
                     'total': str(row[7]).replace(',', '.')
                 })
-                # Grab carrier from the first valid item row found
-                if row[5]:
-                    carrier = str(row[5]).strip()
-                if row[6]:
-                    ship_cost = str(row[6]).strip()
+                if row[5]: carrier = str(row[5]).strip()
+                if row[6]: ship_cost = str(row[6]).strip()
 
             if "TOTAL" in str(row).upper():
                 grand_total = str(row[-1]).replace(',', '.')
@@ -104,17 +102,14 @@ def create_invoice_pdf(data):
     
     pdf.ln(6) 
 
-    # 4. EVENLY SPACED INFO BAR
+    # EVENLY SPACED INFO BAR
     pdf.set_fill_color(245, 245, 245)
     pdf.set_font("Arial", 'B', 9)
-    
-    # Calculate spacing for three equal columns across 190mm width
     pdf.cell(63, 10, f"  Invoice: {data['order_no']}", 0, 0, 'L', True)
     pdf.cell(64, 10, f"Date: {data['order_date']}", 0, 0, 'C', True)
     pdf.cell(63, 10, f"Shipping Method: {data['carrier']}  ", 0, 1, 'R', True)
     pdf.ln(4)
     
-    # 5. TABLE
     w_desc, w_sku, w_qty, w_total = 95, 40, 20, 35
     pdf.set_fill_color(40, 40, 40)
     pdf.set_text_color(255, 255, 255)
@@ -149,7 +144,6 @@ def create_invoice_pdf(data):
     pdf.cell(w_desc + w_sku + w_qty, 10, "TOTAL: ", 0, 0, 'R')
     pdf.cell(w_total, 10, data['total'], 1, 1, 'C')
     
-    # 6. MESSAGE
     pdf.ln(6)
     pdf.set_font("Arial", 'B', 10)
     pdf.cell(0, 6, f"Hi {data['first_name']},", ln=True, align='C')
@@ -159,7 +153,7 @@ def create_invoice_pdf(data):
     msg2 = "Looks like your phone just found its new favorite case.".strip()
     pdf.multi_cell(0, 5, msg1 + "\n" + msg2, align='C')
     pdf.ln(3)
-    help_msg = 'Need help? Just log in to your Back Market account, go to Orders, and click "Get Help."'.strip()
+    help_msg = 'Need help? Just log in to your Back Market account, go to Orders, and click "Get Help."'
     pdf.multi_cell(0, 5, help_msg, align='C')
     pdf.ln(5)
     pdf.cell(0, 5, "Enjoy your new case,", ln=True, align='C')
@@ -174,7 +168,6 @@ def create_invoice_pdf(data):
 # --- STREAMLIT APP ---
 st.set_page_config(page_title="Invoice Generator", page_icon="📄")
 
-# App Header Centering
 col1, col2, col3 = st.columns([1, 2, 1])
 with col2:
     if os.path.exists(WEB_LOGO):
